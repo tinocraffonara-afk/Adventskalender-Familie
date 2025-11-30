@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Familien-Adventskalender</title>
+  <style>
+    :root{
+      --tobi: #2b6cb0;
+      --nicole: #c53030;
+      --leni: #d69e2e;
+      --door-bg: #7b2cbf;
+    }
+    html,body{height:100%;}
+    body {
+      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial;
+      background: linear-gradient(180deg,#0f172a 0%, #0b1220 100%);
+      color: #fff;
+      margin: 0;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      overflow-x: hidden;
+    }
+
+    h1{margin:0;font-size:28px}
+    p.lead{opacity:0.85;margin:4px 0 20px}
+
+    /* Kalender Grid */
+    .calendar{
+      display:grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap:12px;
+      width: min(980px, 96%);
+    }
+
+    .door{
+      /* base ... */
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      border-radius:12px;
+      padding:18px 8px;
+      min-height:88px;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      cursor:pointer;
+      user-select:none;
+      box-shadow: 0 6px 18px rgba(2,6,23,0.6);
+      position:relative;
+      transform-origin:center;
+      perspective:800px;
+      transition: transform 320ms cubic-bezier(.2,.8,.2,1), box-shadow 200ms;
+    }
+
+    .door:hover{transform: translateY(-6px) scale(1.02);}
+
+    .door .num{font-weight:700;font-size:18px}
+    .door .name{font-size:13px;opacity:0.95;margin-top:6px}
+
+    /* person colors */
+    .tobi{border:3px solid var(--tobi)}
+    .nicole{border:3px solid var(--nicole)}
+    .leni{border:3px solid var(--leni)}
+
+    /* opened / redeemed look */
+    .door.opened{opacity:0.45;filter:grayscale(40%);cursor:default}
+    .door.opened::after{
+      content:'✓';
+      position:absolute;
+      right:8px;top:6px;
+      background:rgba(0,0,0,0.3);
+      padding:4px 8px;border-radius:8px;font-weight:700;color:#d1fae5
+    }
+
+    /* opening animation (flip + pop) */
+    .door.anim{
+      transition: transform 600ms cubic-bezier(.2,.8,.2,1);
+      transform: rotateX(180deg) scale(1.04);
+    }
+
+    /* Modal */
+    .modal-bg{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background: linear-gradient(180deg, rgba(2,6,23,0.55), rgba(2,6,23,0.75));}
+    .modal{background:#fff;color:#0b1220;padding:18px;border-radius:12px;min-width:300px;max-width:420px;box-shadow:0 12px 40px rgba(2,6,23,0.6);}    
+    .modal h2{margin:0 0 8px}
+    .modal p{margin:0 0 14px}
+    .btn{display:inline-block;padding:10px 14px;border-radius:8px;background:#0b1220;color:#fff;border:none;cursor:pointer}
+
+    /* snow animation */
+    .snow{pointer-events:none;position:fixed;inset:0;z-index:10;}
+    .snow .flake{position:absolute;top:-10px;font-size:14px;opacity:0.9;animation:fall linear infinite}
+    @keyframes fall{
+      0%{transform: translateY(-10vh) translateX(0) rotate(0deg);opacity:0}
+      10%{opacity:0.9}
+      100%{transform: translateY(110vh) translateX(30vw) rotate(360deg);opacity:0.9}
+    }
+
+    /* responsive */
+    @media (max-width:640px){
+      .calendar{grid-template-columns: repeat(4,1fr)}
+      .door{min-height:76px;padding:14px}
+    }
+  /* highlight birthday door */
+    .door.birthday{
+      box-shadow:0 0 18px 6px rgba(255,215,0,0.7), 0 0 30px rgba(255,255,0,0.4) inset;
+      border:3px solid gold !important;
+      animation: giftPulse 1.8s ease-in-out infinite;
+    }
+    @keyframes giftPulse{
+      0%{transform:scale(1);}
+      50%{transform:scale(1.06);}
+      100%{transform:scale(1);}
+    }
+
+    /* birthday confetti animation */
+    .confetti{
+      position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:20;
+    }
+    .confetti span{
+      position:absolute;top:-10px;font-size:14px;animation: confFall linear infinite;
+    }
+    @keyframes confFall{
+      0%{transform:translateY(-10vh) rotate(0deg);opacity:1;}
+      100%{transform:translateY(120vh) rotate(720deg);opacity:1;}
+    }
+  </style>
+</head>
+<body>
+  <h1>Familien-Adventskalender</h1>
+  <p class="lead">Klicke ein Türchen, um den Gutschein zu sehen — eingelöste Gutscheine werden markiert.</p>
+
+  <div class="calendar" id="calendar"></div>
+
+  <div class="modal-bg" id="modalBg">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2 id="modalTitle">Titel</h2>
+      <p id="modalText">Text</p>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+        <button class="btn" id="redeemBtn">Gutschein einlösen</button>
+        <button class="btn" id="closeBtn" style="background:#6b7280">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="snow" id="snow"></div>
+
+  <script>
+    // --- Gutschein-Texte und Zuweisung nach Wunsch ---
+    const types = [
+      'Nacken ausstreichen',
+      'Nackenmassage',
+      'Rückenstrecker Massage',
+      'Schulter-Nacken Massage mit Scapula-Lifting',
+      'Knetung',
+      'Rückenmassage',
+      'Wunsch-Massage'
+    ];
+
+    // Nicole & Leni: jeweils alle 7 Typen einmal
+    const nicoleList = [...types];
+    const leniList = [...types];
+
+    // Tobi: alle Typen einmal + doppelte von 7 (index6), 6 (index5), 2 (index1)
+    const tobiList = [...types];
+    tobiList.push(types[6]); // Wunsch-Massage duplicate
+    tobiList.push(types[5]); // Rückenmassage duplicate
+    tobiList.push(types[1]); // Nackenmassage duplicate
+
+    // sortierung: wir wollen eine regelmäßige Rotation Tobi - Nicole - Leni repeated 7x (21)
+    // und dann 3 zusätzliche Tobi einfügen verteilt (insert at indices 6,13,20) to keep spacing
+    let nameSeq = [];
+    for(let i=0;i<7;i++){
+      nameSeq.push('Tobi', 'Nicole', 'Leni');
+    }
+    // nameSeq length = 21
+    // insert extra Tobi at spaced positions to reach 24 total
+    const inserts = [6,13,20]; // positions to insert before
+    inserts.forEach((pos,idx)=>{
+      nameSeq.splice(pos + idx, 0, 'Tobi'); // idx adjusts for earlier inserts
+    });
+    // now nameSeq length = 24 and counts: Tobi 10, Nicole 7, Leni 7
+
+    // shuffle helper
+function shuffle(arr){for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()* (i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
+// shuffle lists to avoid repeated same voucher types
+shuffle(nicoleList);
+shuffle(leniList);
+shuffle(tobiList);
+
+// Map person -> list (as queue)
+    const lists = { Tobi: tobiList.slice(), Nicole: nicoleList.slice(), Leni: leniList.slice() };
+
+    // Build familyDoors by popping next voucher for the person in sequence
+    const familyDoors = nameSeq.map((name, i) => {
+      const list = lists[name];
+      // if list empty (shouldn't happen), fallback to Wunsch-Massage
+      const text = list.length ? list.shift() : 'Wunsch-Massage';
+      return { name, text };
+    });
+
+    // --- UI / Rendering ---
+    const calendar = document.getElementById('calendar');
+    const modalBg = document.getElementById('modalBg');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalText = document.getElementById('modalText');
+    const redeemBtn = document.getElementById('redeemBtn');
+    const closeBtn = document.getElementById('closeBtn');
+
+    function createDoor(door, index){
+      const el = document.createElement('div');
+      el.className = 'door ' + (door.name === 'Tobi' ? 'tobi' : door.name === 'Nicole' ? 'nicole' : 'leni');
+      if(index===0) el.classList.add('birthday');
+      el.innerHTML = `<div class="num">${index+1}</div><div class="name">${door.name}</div>`;
+
+      // check redeemed
+      if(localStorage.getItem('redeemed_'+index) === 'true') el.classList.add('opened');
+
+      el.addEventListener('click', ()=>{
+        if(el.classList.contains('opened')) return;
+
+        // animate flip/pop
+        if(index===0){
+          launchConfetti();
+        }
+        el.classList.add('anim');
+        setTimeout(()=>{
+          el.classList.remove('anim');
+          // show modal
+          modalTitle.textContent = `${door.name} — Tür ${index+1}`;
+          modalText.textContent = door.text;
+          modalBg.style.display = 'flex';
+
+          // redeem handler
+          redeemBtn.onclick = ()=>{
+            localStorage.setItem('redeemed_'+index, 'true');
+            el.classList.add('opened');
+            modalBg.style.display = 'none';
+          };
+        }, 450);
+      });
+
+      return el;
+    }
+
+    // re-enable Tür 1
+localStorage.removeItem('redeemed_0');
+
+// render all doors
+    familyDoors.forEach((d,i)=> calendar.appendChild(createDoor(d,i)));
+
+    closeBtn.addEventListener('click', ()=> modalBg.style.display = 'none');
+
+    // confetti launcher
+    function launchConfetti(){
+      const layer = document.createElement('div');
+      layer.className = 'confetti';
+      document.body.appendChild(layer);
+      for(let i=0;i<40;i++){
+        const s = document.createElement('span');
+        s.textContent = ['🎉','✨','🎊'][Math.floor(Math.random()*3)];
+        s.style.left = Math.random()*100 + 'vw';
+        s.style.animationDuration = (3 + Math.random()*3) + 's';
+        s.style.fontSize = (16 + Math.random()*14) + 'px';
+        layer.appendChild(s);
+      }
+      setTimeout(()=>layer.remove(),4000);
+    }
+
+    // --- Snow generation ---
+    const snow = document.getElementById('snow');
+    function makeSnow(count){
+      const frag = document.createDocumentFragment();
+      for(let i=0;i<count;i++){
+        const span = document.createElement('span');
+        span.className = 'flake';
+        span.textContent = '❄';
+        span.style.left = Math.random()*100 + 'vw';
+        span.style.fontSize = (8 + Math.random()*20) + 'px';
+        span.style.animationDuration = (6 + Math.random()*8) + 's';
+        span.style.opacity = 0.7 + Math.random()*0.3;
+        span.style.transform = `translateX(${(Math.random()-0.5)*40}vw)`;
+        frag.appendChild(span);
+      }
+      snow.appendChild(frag);
+    }
+    makeSnow(30);
+
+    // --- Debug: expose data for easy checking in console ---
+    console.log('familyDoors', familyDoors);
+  </script>
+</body>
+</html>
